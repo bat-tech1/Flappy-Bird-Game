@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Custom Flappy Bird</title>
+  <style>
+    * {
+      margin: 0; padding: 0; box-sizing: border-box;
+    }
+    body {
+      display: flex; justify-content: center; align-items: center;
+      height: 100vh; background: #000; flex-direction: column;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      user-select: none;
+    }
+    canvas {
+      border: 2px solid gold;
+      border-radius: 10px;
+      max-width: 100%;
+      height: auto;
+      background: #70c5ce;
+      display: block;
+    }
+    #startBtn {
+  position: absolute;
+  background: gold;
+  color: #111;
+  font-size: 22px;
+  padding: 10px 25px;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: bold;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+  transition: transform 0.2s;
+  /* Centering Fix: Use transform to center */
+  top: 62%; 
+  left: 50%;
+  transform: translate(-50%, -50%); /* Base transform */
+  user-select: none;
+}
+#startBtn:hover {
+  transform: translate(-50%, -50%) scale(1.05); /* Apply base transform AND scale */
+}
+    #overlay {
+      position: absolute;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: rgba(3, 130, 66, 0.4);
+      color: white;
+      width: 100%;
+      height: 100%;
+      top: 0;
+      left: 0;
+      text-align: center;
+      padding: 20px;
+      user-select: none;
+    }
+    h1 {
+      font-size: 40px;
+      margin-bottom: 18px;
+      text-shadow: 3px 3px 12px #000;
+    }
+    #instruction {
+      font-size: 18px;
+      margin-bottom: 36px;
+      text-shadow: 1px 1px 5px #000;
+    }
+    
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas"></canvas>
+
+  <div id="overlay">
+    <h1>Flappy Bird</h1>
+    <div id="instruction">Press Start Game to play.</div>
+    <button id="startBtn">Start Game</button>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const overlay = document.getElementById('overlay');
+    const startBtn = document.getElementById('startBtn');
+  
+
+   function resize() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+   }
+   window.addEventListener('resize', resize);
+   resize();
+    // Load images
+    const birdImg = new Image();
+    birdImg.src = 'mishra.jpg';
+    const pipeImg = new Image();
+    pipeImg.src = 'kamaal.jpg';
+    const bgImg = new Image();
+    bgImg.src = 'background.jpg';
+
+    // Bird and Game State
+    let bird;
+    let pipes;
+    let frame;
+    let score;
+    let gameOver = false;
+    let gameStarted = false;
+    let countdownActive = false
+    let growing = false; // death animation
+    let pipeSpeed = 5;
+    const pipeGap = 250;
+
+    // Particles for score effect
+    let particles = [];
+
+    function resetGame() {
+      bird = {
+        x: canvas.width / 4,
+        y: canvas.height / 2,
+        width: 70,
+        height: 70,
+        gravity: 0.5,
+        lift: -8,
+        velocity: 0,
+        frame: 0,
+        flapCycle: 0
+      };
+      pipes = [];
+      frame = 0;
+      score = 0;
+      gameOver = false;
+      growing = false;
+      pipeSpeed = 2;
+      particles = [];
+      countdownActive = true;
+    }
+
+    function startGame() {
+  resetGame();
+  gameStarted = true;
+  
+  overlay.style.display = 'flex'; // Keep overlay visible for countdown text
+
+  let count = 3;
+  const h1 = document.querySelector('h1');
+  const instruction = document.getElementById('instruction');
+  startBtn.style.display = 'none'; // Hide the start button while counting
+
+  // Start the actual countdown display and logic
+  const countdownInterval = setInterval(() => {
+    if (count > 0) {
+      h1.textContent = count;
+      instruction.textContent = 'Get Ready! Tap space key to fly.';
+      count--;
+    } else {
+      // Countdown finished
+      clearInterval(countdownInterval);
+      overlay.style.display = 'none'; // Hide the overlay
+      countdownActive = false; // RELEASE THE BIRD/PIPES!
+      draw(); // Start the main game loop
+    }
+  }, 650); // 1000 milliseconds = 1 second delay per number
+}
+
+    startBtn.addEventListener('click', startGame);
+    document.addEventListener('keydown', e => {
+      if (e.code === 'Space' && gameStarted && !gameOver) {
+        e.preventDefault();
+        flap();
+      }
+    });
+    canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      if (gameStarted && !gameOver) flap();
+    }, {passive: false});
+
+    function flap() {
+      bird.velocity = bird.lift;
+      bird.flapCycle = 5; // frames of wing flap
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Background
+      if (bgImg.complete && bgImg.naturalHeight !== 0) {
+        ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
+      } else {
+        ctx.fillStyle = '#70c5ce';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+
+      if (!gameOver && !countdownActive) {
+        bird.velocity += bird.gravity;
+        bird.y += bird.velocity;
+      }
+
+      if (bird.y + bird.height > canvas.height) {
+        bird.y = canvas.height - bird.height;
+        endGame();
+      }
+      if (bird.y < 0) bird.y = 0;
+
+      // Pipe generation
+      if (frame % 100 === 0 && !gameOver && !countdownActive) {
+        const topHeight = Math.random() * (canvas.height / 2) + 50;
+        pipes.push({ x: canvas.width, top: topHeight, bottom: topHeight + pipeGap, scored: false });
+      }
+
+      // Increase pipe speed as score increases for challenge
+      pipeSpeed = 2.5 + score * 0.1;
+
+      // Draw pipes
+      const scaledWidth = 80;
+      const scaledHeight = 300;
+
+      pipes.forEach((pipe, i) => {
+        pipe.x -= pipeSpeed;
+
+        // Draw top pipe
+        ctx.drawImage(pipeImg, pipe.x, pipe.top - scaledHeight, scaledWidth, scaledHeight);
+
+        // Draw bottom pipe
+        ctx.drawImage(pipeImg, pipe.x, pipe.bottom, scaledWidth, scaledHeight);
+      // Score check: Did the bird pass the pipe?
+      if (!gameOver && !pipe.scored && bird.x > pipe.x + scaledWidth) {
+      score++;
+      pipe.scored = true; // Mark as scored so it won't count again
+      createParticles(bird.x + bird.width, bird.y + bird.height / 2);
+}
+        // Collision
+        if (!gameOver &&
+          bird.x < pipe.x + scaledWidth &&
+          bird.x + bird.width > pipe.x &&
+          (bird.y < pipe.top || bird.y + bird.height > pipe.bottom)
+        ) {
+          endGame();
+        }
+
+        // Remove offscreen pipes
+        if (pipe.x + scaledWidth < 0) {
+          pipes.splice(i, 1);
+          if (!gameOver) {
+        
+          }
+        }
+      });
+
+      // Update and draw particles
+      particles.forEach((p, index) => {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.life -= 0.05;
+        ctx.fillStyle = `rgba(255, 215, 0, ${p.life})`;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+        ctx.fill();
+        if (p.life <= 0) particles.splice(index, 1);
+      });
+
+      // Bird wing animation (simple frame toggle)
+      if (bird.flapCycle > 0) {
+        bird.flapCycle--;
+      }
+      const birdDrawHeight = bird.flapCycle > 2 ? bird.height + 6 : bird.height;
+
+      // Bird rotation based on velocity (limits for smooth)
+      let angle = bird.velocity * 0.07;
+      angle = Math.min(Math.max(angle, -0.5), 1);
+
+      ctx.save();
+      ctx.translate(bird.x + bird.width / 2, bird.y + bird.height / 2);
+      ctx.rotate(angle);
+
+      if (birdImg.complete && birdImg.naturalHeight !== 0) {
+        ctx.drawImage(birdImg, -bird.width / 2, -birdDrawHeight / 2, bird.width, birdDrawHeight);
+      } else {
+        ctx.fillStyle = 'yellow';
+        ctx.fillRect(-bird.width / 2, -birdDrawHeight / 2, bird.width, birdDrawHeight);
+      }
+      ctx.restore();
+
+      // Score
+      ctx.fillStyle = '#111';
+      ctx.font = '28px Arial Black, Arial';
+      ctx.shadowColor = 'gold';
+      ctx.shadowBlur = 5;
+      ctx.fillText('Score: ' + score, 15, 40);
+      ctx.shadowBlur = 0;
+
+      // Death animation: bird grows bigger
+      if (growing) {
+        bird.width += 1.5;
+        bird.height += 1.5;
+        bird.x -= 0.75;
+        bird.y -= 0.75;
+        if (bird.width > 120) growing = false;
+      }
+
+      if (!gameOver) {
+        frame++;
+        requestAnimationFrame(draw);
+      } else if (growing) {
+        requestAnimationFrame(draw);
+      }
+    }
+
+    function endGame() {
+      if (!gameOver) {
+        gameOver = true;
+        growing = true;
+
+        setTimeout(() => {
+          overlay.style.display = 'flex';
+          startBtn.textContent = 'Restart';
+          startBtn.style.display = 'block';
+          document.querySelector('h1').textContent = `Khel Khatam! Score: ${score}`;
+          document.getElementById('instruction').textContent = 'Press Restart to Play Again';
+        }, 3000);
+      }
+    }
+
+    function createParticles(x, y) {
+      const count = 10;
+      for (let i = 0; i < count; i++) {
+        particles.push({
+          x: x,
+          y: y,
+          vx: (Math.random() - 0.5) * 3,
+          vy: (Math.random() - 0.5) * 3,
+          life: 1
+        });
+      }
+    }
+
+    // Initialize overlay and instructions
+    overlay.style.display = 'flex';
+  </script>
+</body>
+</html>
