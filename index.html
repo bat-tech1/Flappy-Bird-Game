@@ -109,7 +109,7 @@
     let score;
     let gameOver = false;
     let gameStarted = false;
-    let countdownActive = false
+    let gameActive = false; // NEW STATE: True when the bird is moving (after first flap)
     let growing = false; // death animation
     let pipeSpeed = 5;
     const pipeGap = 250;
@@ -123,8 +123,8 @@
         y: canvas.height / 2,
         width: 70,
         height: 70,
-        gravity: 0.5,
-        lift: -8,
+        gravity: 0.3,
+        lift: -6,
         velocity: 0,
         frame: 0,
         flapCycle: 0
@@ -133,38 +133,65 @@
       frame = 0;
       score = 0;
       gameOver = false;
+      gameActive = false; // RESET STATE
       growing = false;
       pipeSpeed = 2;
       particles = [];
-      countdownActive = true;
     }
 
+    // NEW FUNCTION: Draws the static screen waiting for the first input
+    function drawTitleScreen() {
+        if (gameActive || gameOver) return;
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Draw Background
+        if (bgImg.complete && bgImg.naturalHeight !== 0) {
+            ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
+        } else {
+            ctx.fillStyle = '#70c5ce';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+        
+        // Draw the Bird (no movement/physics applied yet)
+        if (birdImg.complete && birdImg.naturalHeight !== 0) {
+            ctx.drawImage(birdImg, bird.x, bird.y, bird.width, bird.height);
+        } else {
+            ctx.fillStyle = 'yellow';
+            ctx.fillRect(bird.x, bird.y, bird.width, bird.height);
+        }
+
+        // Draw the Instruction Text (Split into two lines and moved up)
+        const centerX = canvas.width / 2;
+        const baseY = canvas.height / 3; // Move the text block up to 1/3 height
+
+        ctx.fillStyle = 'yellow';
+        ctx.textAlign = "center";
+        ctx.font = '40px Arial Black';
+        ctx.shadowColor = '#111';
+        ctx.shadowBlur = 10;
+        
+        // Line 1: TAP SCREEN
+        ctx.fillText('TAP /', centerX, baseY);
+        
+        // Line 2: PRESS SPACE TO START (Spaced 50 pixels below Line 1)
+        ctx.fillText('PRESS SPACE', centerX, baseY + 50);
+
+        ctx.shadowBlur = 0;
+
+        requestAnimationFrame(drawTitleScreen);
+    }
     function startGame() {
-  resetGame();
-  gameStarted = true;
-  
-  overlay.style.display = 'flex'; // Keep overlay visible for countdown text
-
-  let count = 3;
-  const h1 = document.querySelector('h1');
-  const instruction = document.getElementById('instruction');
-  startBtn.style.display = 'none'; // Hide the start button while counting
-
-  // Start the actual countdown display and logic
-  const countdownInterval = setInterval(() => {
-    if (count > 0) {
-      h1.textContent = count;
-      instruction.textContent = 'Get Ready! Tap space key to fly.';
-      count--;
-    } else {
-      // Countdown finished
-      clearInterval(countdownInterval);
-      overlay.style.display = 'none'; // Hide the overlay
-      countdownActive = false; // RELEASE THE BIRD/PIPES!
-      draw(); // Start the main game loop
+        // STEP 1: Remove countdown logic
+        resetGame();
+        gameStarted = true;
+        
+        // Hide overlay, but don't start the main loop (draw) yet
+        overlay.style.display = 'none'; 
+        
+        // Start the static screen loop
+        requestAnimationFrame(drawTitleScreen); 
     }
-  }, 650); // 1000 milliseconds = 1 second delay per number
-}
 
     startBtn.addEventListener('click', startGame);
     document.addEventListener('keydown', e => {
@@ -179,11 +206,19 @@
     }, {passive: false});
 
     function flap() {
+        // STEP 1 CONTINUED: Start the main loop on the first flap
+        if (!gameActive) {
+            gameActive = true;
+            requestAnimationFrame(draw); // Start the main physics/pipe loop
+        }
+        
       bird.velocity = bird.lift;
       bird.flapCycle = 5; // frames of wing flap
     }
 
     function draw() {
+        if (!gameActive) return; // Ensures draw() stops if flap() hasn't been called yet
+
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       // Background
@@ -194,7 +229,7 @@
         ctx.fillRect(0, 0, canvas.width, canvas.height);
       }
 
-      if (!gameOver && !countdownActive) {
+      if (!gameOver) { // Removed !countdownActive check
         bird.velocity += bird.gravity;
         bird.y += bird.velocity;
       }
@@ -206,7 +241,7 @@
       if (bird.y < 0) bird.y = 0;
 
       // Pipe generation
-      if (frame % 100 === 0 && !gameOver && !countdownActive) {
+      if (frame % 100 === 0 && !gameOver) { // Removed !countdownActive check
         const topHeight = Math.random() * (canvas.height / 2) + 50;
         pipes.push({ x: canvas.width, top: topHeight, bottom: topHeight + pipeGap, scored: false });
       }
@@ -244,9 +279,7 @@
         // Remove offscreen pipes
         if (pipe.x + scaledWidth < 0) {
           pipes.splice(i, 1);
-          if (!gameOver) {
-        
-          }
+          
         }
       });
 
@@ -289,7 +322,7 @@
       ctx.font = '28px Arial Black, Arial';
       ctx.shadowColor = 'gold';
       ctx.shadowBlur = 5;
-      ctx.fillText('Score: ' + score, 15, 40);
+      ctx.fillText('Score: ' + score, 80, 50);
       ctx.shadowBlur = 0;
 
       // Death animation: bird grows bigger
@@ -314,13 +347,12 @@
         gameOver = true;
         growing = true;
 
-        setTimeout(() => {
-          overlay.style.display = 'flex';
-          startBtn.textContent = 'Restart';
-          startBtn.style.display = 'block';
-          document.querySelector('h1').textContent = `Khel Khatam! Score: ${score}`;
-          document.getElementById('instruction').textContent = 'Press Restart to Play Again';
-        }, 3000);
+        // STEP 2: Removed the 3000ms setTimeout entirely.
+        overlay.style.display = 'flex';
+        startBtn.textContent = 'Restart';
+        startBtn.style.display = 'block';
+        document.querySelector('h1').textContent = `Khel Khatam! Score: ${score}`;
+        document.getElementById('instruction').textContent = 'Press Restart to Play Again';
       }
     }
 
@@ -341,5 +373,4 @@
     overlay.style.display = 'flex';
   </script>
 </body>
-
 </html>
